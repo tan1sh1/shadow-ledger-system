@@ -1,0 +1,123 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        # Event Service Routes
+        - id: event-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/events,/events/**
+          filters:
+            - name: TraceIdFilter
+
+        # Shadow Ledger Service Routes
+        - id: shadow-ledger-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/accounts/**
+          filters:
+            - name: TraceIdFilter
+
+        # Drift and Correction Service Routes - drift-check
+        - id: drift-service-check
+          uri: http://localhost:8083
+          predicates:
+            - Path=/drift-check,/drift-check/**
+          filters:
+            - name: TraceIdFilter
+
+        # Drift and Correction Service Routes - correct
+        - id: drift-service-correct
+          uri: http://localhost:8083
+          predicates:
+            - Path=/correct/**
+          filters:
+            - name: TraceIdFilter
+
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+
+# JWT Configuration
+jwt:
+  secret: "mySecretKeyForJWTTokenGenerationAndValidation12345678901234567890"
+  expiration: 86400000 # 24 hours in milliseconds
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging configuration
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  level:
+    root: INFO
+    com.example: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO
+
+---
+# Docker profile - override URIs for Docker Compose deployment
+spring:
+  config:
+    activate:
+      on-profile: docker
+  cloud:
+    gateway:
+      routes:
+        - id: event-service
+          uri: http://event-service:8081
+          predicates:
+            - Path=/events,/events/**
+          filters:
+            - name: TraceIdFilter
+
+        - id: shadow-ledger-service
+          uri: http://shadow-ledger-service:8082
+          predicates:
+            - Path=/accounts/**
+          filters:
+            - name: TraceIdFilter
+
+        - id: drift-service-check
+          uri: http://drift-correction-service:8083
+          predicates:
+            - Path=/drift-check,/drift-check/**
+          filters:
+            - name: TraceIdFilter
+
+        - id: drift-service-correct
+          uri: http://drift-correction-service:8083
+          predicates:
+            - Path=/correct/**
+          filters:
+            - name: TraceIdFilter
+
+
+
+

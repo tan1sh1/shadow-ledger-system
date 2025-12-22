@@ -1,0 +1,218 @@
+version: '3.8'
+
+services:
+  # Zookeeper - Required for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - shadow-ledger-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - shadow-ledger-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # PostgreSQL for Event Service
+  postgres-event:
+    image: postgres:15-alpine
+    container_name: postgres-event
+    environment:
+      POSTGRES_DB: eventdb
+      POSTGRES_USER: eventuser
+      POSTGRES_PASSWORD: eventpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-event-data:/var/lib/postgresql/data
+    networks:
+      - shadow-ledger-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventuser -d eventdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for Shadow Ledger Service
+  postgres-ledger:
+    image: postgres:15-alpine
+    container_name: postgres-ledger
+    environment:
+      POSTGRES_DB: ledgerdb
+      POSTGRES_USER: ledgeruser
+      POSTGRES_PASSWORD: ledgerpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-ledger-data:/var/lib/postgresql/data
+    networks:
+      - shadow-ledger-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgeruser -d ledgerdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for Drift and Correction Service
+  postgres-drift:
+    image: postgres:15-alpine
+    container_name: postgres-drift
+    environment:
+      POSTGRES_DB: driftdb
+      POSTGRES_USER: driftuser
+      POSTGRES_PASSWORD: driftpass
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-drift-data:/var/lib/postgresql/data
+    networks:
+      - shadow-ledger-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U driftuser -d driftdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - shadow-ledger-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Event Service
+  event-service:
+    build:
+      context: ./event-service
+      dockerfile: Dockerfile
+    container_name: event-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-event:5432/eventdb
+      SPRING_DATASOURCE_USERNAME: eventuser
+      SPRING_DATASOURCE_PASSWORD: eventpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - shadow-ledger-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-event:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Shadow Ledger Service
+  shadow-ledger-service:
+    build:
+      context: ./shadow-ledger-service
+      dockerfile: Dockerfile
+    container_name: shadow-ledger-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-ledger:5432/ledgerdb
+      SPRING_DATASOURCE_USERNAME: ledgeruser
+      SPRING_DATASOURCE_PASSWORD: ledgerpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - shadow-ledger-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Drift and Correction Service
+  drift-correction-service:
+    build:
+      context: ./drift-correction-service
+      dockerfile: Dockerfile
+    container_name: drift-correction-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-drift:5432/driftdb
+      SPRING_DATASOURCE_USERNAME: driftuser
+      SPRING_DATASOURCE_PASSWORD: driftpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LEDGER_SERVICE_URL: http://shadow-ledger-service:8082
+    networks:
+      - shadow-ledger-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-drift:
+        condition: service_healthy
+      shadow-ledger-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  shadow-ledger-network:
+    driver: bridge
+
+volumes:
+  postgres-event-data:
+  postgres-ledger-data:
+  postgres-drift-data:
+

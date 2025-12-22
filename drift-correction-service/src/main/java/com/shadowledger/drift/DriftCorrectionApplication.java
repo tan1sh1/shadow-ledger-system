@@ -1,0 +1,11 @@
+package com.shadowledger.drift;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DriftCorrectionApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DriftCorrectionApplication.class, args);
+    }
+}

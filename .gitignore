@@ -1,0 +1,5 @@
+# Project exclude paths
+/drift-correction-service/.gradle/
+/drift-correction-service/build/
+/drift-correction-service/build/classes/java/main/
+/drift-correction-service/build/classes/java/test/
