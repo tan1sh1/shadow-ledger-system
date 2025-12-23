@@ -1,0 +1,133 @@
+openapi: 3.0.1
+info:
+  title: Shadow Ledger System API
+  version: 1.0.0
+  description: API specification for the Shadow Ledger System microservices.
+servers:
+  - url: http://localhost:8080
+paths:
+  /auth/token:
+    post:
+      summary: Generate JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                roles:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: JWT token response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  type:
+                    type: string
+                  username:
+                    type: string
+                  roles:
+                    type: string
+  /events:
+    post:
+      summary: Create event
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventId:
+                  type: string
+                accountId:
+                  type: string
+                type:
+                  type: string
+                amount:
+                  type: number
+                timestamp:
+                  type: integer
+      responses:
+        '201':
+          description: Event created
+    get:
+      summary: List all events
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of events
+  /accounts/{accountId}/balance:
+    get:
+      summary: Get account balance
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account balance
+  /drift-check:
+    post:
+      summary: Check drift
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  accountId:
+                    type: string
+                  reportedBalance:
+                    type: number
+      responses:
+        '200':
+          description: Drift check result
+  /correct/{accountId}:
+    post:
+      summary: Manual correction
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Correction applied
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+

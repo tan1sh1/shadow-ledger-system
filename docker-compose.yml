@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - event-service
+      - shadow-ledger-service
+      - drift-correction-service
+  event-service:
+    build: ./event-service
+    ports:
+      - "8081:8081"
+  shadow-ledger-service:
+    build: ./shadow-ledger-service
+    ports:
+      - "8082:8082"
+  drift-correction-service:
+    build: ./drift-correction-service
+    ports:
+      - "8083:8083"
+
